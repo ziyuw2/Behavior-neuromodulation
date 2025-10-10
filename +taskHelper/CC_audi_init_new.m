@@ -1,4 +1,4 @@
-function [Init] = CC_audi_init(Info, session)    
+function [Init] = CC_audi_init_new(Info, session)    
     % To generate block trials or reward and punishment balanced pseudo-random trials
     % Then assign sound to the trials based on the rule
     % Lastly generate delay and ITI

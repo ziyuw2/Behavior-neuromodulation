@@ -1,31 +1,25 @@
 function GNG_drawTrialtype_init(Info, Init, app, trial_i)           
     cla(app.smallPlot);
-
-    %% plotting trial type (GO, GO, NOGO)
-    if Init.rule{trial_i} == 'A'
-        app.smallPlot.YTickLabel = {'NOGO', 'GO', 'GO'};
-    elseif Init.rule{trial_i} == 'B'
-        app.smallPlot.YTickLabel = {'NOGO', 'NOGO', 'GO'};
-    elseif Init.rule{trial_i} == 'C'
-        app.smallPlot.YTickLabel = {'GO', 'GO', 'GO'};
-    end
     % cla(app.smallPlot);
     idx = trial_i:trial_i+19;
 
     switch Init.rule{trial_i}
-        case 'A'
+        case 'H_GO'
             marker = 'o';
-        case 'B'
-            marker = 's';
-        case 'C'
-            marker = 'd';
+            tiralTypes = Init.trialTypeDir(idx)./abs(Init.trialTypeDir(idx));
+        case 'L_GO'
+            marker = 'square';
+            tiralTypes = -Init.trialTypeDir(idx)./abs(Init.trialTypeDir(idx));
+        otherwise
+            marker = 'diamond';
+            tiralTypes = Init.trialTypeDir(idx)./abs(Init.trialTypeDir(idx));
     end
-    
-    scatter(app.smallPlot, idx, Init.trialTypeDir(idx),'Marker',marker, ...
+    scatter(app.smallPlot, idx, tiralTypes, 'Marker',marker, ...
         'MarkerEdgeColor',[.5 .5 .5], 'SizeData',70, 'LineWidth', 2);
    
     app.smallPlot.YLabel.String = 'Trial type';
-    app.smallPlot.YTick = [-1 0 1];
+    app.smallPlot.YTick = [-1 1];
+    app.smallPlot.YTickLabel = {'NOGO', 'GO'};
     app.smallPlot.YLim = [-1.5 1.5];
 
     app.smallPlot.XLabel.String = 'Trial number';

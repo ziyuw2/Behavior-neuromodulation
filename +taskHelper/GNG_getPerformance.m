@@ -12,19 +12,20 @@
         hit_rate = sum(ismember(behavior, 'Hit')) / (sum(ismember(behavior, 'Hit')) + sum(ismember(behavior, 'Miss')));
         fa_rate = sum(ismember(behavior, 'FA')) / (sum(ismember(behavior, 'FA')) + sum(ismember(behavior, 'CR')));
         session.dprime(trial_i) = norminv(hit_rate, 0, 1) - norminv(fa_rate, 0, 1);
+        session.hitRate(trial_i) = hit_rate;
+        session.faRate(trial_i) = fa_rate;
 
-        session.Aaccuracy(trial_i) = sum((session.correct(block) == 1) & ismember(session.rule(block), 'A')) / sum(ismember(session.rule(block), 'A') & ~isnan(session.correct(block)));
-        session.Baccuracy(trial_i) = sum((session.correct(block) == 1) & ismember(session.rule(block), 'B')) / sum(ismember(session.rule(block), 'B') & ~isnan(session.correct(block)));
+        % session.Aaccuracy(trial_i) = sum((session.correct(block) == 1) & ismember(session.rule(block), 'A')) / sum(ismember(session.rule(block), 'A') & ~isnan(session.correct(block)));
+        % session.Baccuracy(trial_i) = sum((session.correct(block) == 1) & ismember(session.rule(block), 'B')) / sum(ismember(session.rule(block), 'B') & ~isnan(session.correct(block)));
 
-        if session.switchTrial ~= 0 % already switched
-            switch session.rule{trial_i} % rule for new trial
-                case 'A'
-                    session.Aaccuracy(trial_i) = sum((session.correct(block) == 1) & ismember(session.rule(block), 'A')) / sum(ismember(session.rule(block), 'A') & ~isnan(session.correct(block)));
-                    session.Baccuracy(trial_i) = session.Baccuracy(session.switchTrial);
-                case 'B'
-                    session.Aaccuracy(trial_i) = session.Aaccuracy(session.switchTrial);
-                    session.Baccuracy(trial_i) = sum((session.correct(block) == 1) & ismember(session.rule(block), 'B')) / sum(ismember(session.rule(block), 'B') & ~isnan(session.correct(block)));
-            end
-        end
-
+        % if session.switchTrial ~= 0 % already switched
+        %     switch session.rule{trial_i} % rule for new trial
+        %         case 'A'
+        %             session.Aaccuracy(trial_i) = sum((session.correct(block) == 1) & ismember(session.rule(block), 'A')) / sum(ismember(session.rule(block), 'A') & ~isnan(session.correct(block)));
+        %             session.Baccuracy(trial_i) = session.Baccuracy(session.switchTrial);
+        %         case 'B'
+        %             session.Aaccuracy(trial_i) = session.Aaccuracy(session.switchTrial);
+        %             session.Baccuracy(trial_i) = sum((session.correct(block) == 1) & ismember(session.rule(block), 'B')) / sum(ismember(session.rule(block), 'B') & ~isnan(session.correct(block)));
+        %     end
+        % end
     end

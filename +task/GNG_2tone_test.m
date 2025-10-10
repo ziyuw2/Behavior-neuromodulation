@@ -3,15 +3,12 @@ function [Info] = GNG_2tone_test(app, Info, Stim, ARDU, DAQ)
     
     %% Create a struct to store session data
     session = struct();
-    session.repetition = 0;
-    session.initRule = Info.session.initRule;
-    if session.initRule ~= 'C'
-        session.secondRule = char('A' + 'B' - session.initRule);
-    end
+    session.repetition = 0;    
+    session.rule = Info.session.rule; % 'H-GO' or 'L-GO'
+    session.volume = Info.taskparam.volume;
     session.tone_num = 2;
     
     Init = taskHelper.GNG_audi_init(Info, session);
-    session.switchThreshold = Init.switchThreshold;
     session.iti = [];
     session.rule = {};
     session.trialTypeDir = [];
@@ -20,15 +17,21 @@ function [Info] = GNG_2tone_test(app, Info, Stim, ARDU, DAQ)
     session.blockSize = 70; % for accuracy calculation
     
     %% Invariable parameters
+    session.prespecifiedTrialNum = Info.session.prespecifiedTrialNum;
+    session.motorConnection = Info.session.motorConnection;
     session.startCueDur = Info.taskparam.startCueDur;
     session.initDelay = Info.taskparam.isi;
+    session.stimDur = Info.taskparam.stimDur;
     session.portDelay = Info.taskparam.portDelay;
+    session.lickWindow = Info.taskparam.lickWindow;
+    session.reinforcerDelay = Info.taskparam.reinforcerDelay;
+    session.reinforcerProb = Info.taskparam.reinforcerProb;
     session.airpuffDur = Info.taskparam.airpuffDur;
     session.waterTTLTime = Info.taskparam.waterTTLTime;
     session.timeout = Info.taskparam.timeout;
     session.respDur = Info.taskparam.respDur;
-    session.accuracyLevel = Info.taskparam.accuracyLevel;
-    session.dprimeLevel = Info.taskparam.dprimeLevel;
+    session.recording = Info.session.recording;
+    session.expType = Info.session.expType;
  
     % Trial event storage
     session.event.led = [];
@@ -47,77 +50,79 @@ function [Info] = GNG_2tone_test(app, Info, Stim, ARDU, DAQ)
     session.behavior = {}; % hit, miss, fa, cr
     session.accuracy = [];
     session.dprime = [];
-    session.Aaccuracy = [];
-    session.Baccuracy = [];
-    
+
     %% Create sound players
     Stim = audiHelper.loadTone(Stim, Info);
-    speaker_low = audioplayer(Stim.tone_low, Stim.samplingFreq);
-    speaker_high = audioplayer(Stim.tone_high, Stim.samplingFreq);
-    speaker_mid = audioplayer(Stim.tone_mid, Stim.samplingFreq);
-    
+    if ~isempty(session.volume)
+        volume = session.volume;
+        speaker.L1 = audioplayer(volume(1) * Stim.tone_low, Stim.samplingFreq);
+        speaker.H1 = audioplayer(volume(1) * Stim.tone_high, Stim.samplingFreq);
+        speaker.L2 = audioplayer(volume(2) * Stim.tone_low, Stim.samplingFreq);
+        speaker.H2 = audioplayer(volume(2) * Stim.tone_high, Stim.samplingFreq);
+        speaker.L3 = audioplayer(volume(3) * Stim.tone_low, Stim.samplingFreq);
+        speaker.H3 = audioplayer(volume(3) * Stim.tone_high, Stim.samplingFreq);
+        speaker.L4 = audioplayer(volume(4) * Stim.tone_low, Stim.samplingFreq);
+        speaker.H4 = audioplayer(volume(4) * Stim.tone_high, Stim.samplingFreq);
+    else
+        speaker.L = audioplayer(Stim.tone_low, Stim.samplingFreq);
+        speaker.H = audioplayer(Stim.tone_high, Stim.samplingFreq);
+        % speaker_mid = audioplayer(Stim.tone_mid, Stim.samplingFreq);
+    end
     %% Motor control
     nSteps = 5;
     [approach, withdraw] = taskHelper.getMotorSteps(Info, nSteps);
+
+    %% Pupil camera 
+    switch session.expType
+        case '1P imaging'
+        % cd('C:\Rig\Pupil_cam')
+        fclose(fopen('C:\Rig\Pupil_cam\start_cam.txt', 'w'));
+        disp("Signal sent to start camera.");
+        pause(5);
+    end
     
     %% Start the trial
     trial_i = 1;
     taskHelper.GNG_drawTrialtype_init(Info, Init, app, trial_i);
     taskHelper.GNG_drawAccuracy_init(Info, app, trial_i);
     hold(app.smallPlot, 'on');
-    hold(app.accuPlot, 'on');
-    while trial_i < Init.nTrials
+    hold(app.bigPlot, 'on');
+    while trial_i <= min(Init.nTrials, session.prespecifiedTrialNum)
         app.trialNum.Text = num2str(trial_i);
         taskHelper.GNG_drawTrialCurrent(Init, trial_i, app);
         session.iti(trial_i) = Init.iti(trial_i);
         session.rule{trial_i} = Init.rule{trial_i};
-        app.repSwitch.Text = num2str(session.switchTrial);
+        app.repSwitch.Text = num2str(session.repetition);
+        flush(DAQ, "input");
+        flush(DAQ, "output");
 
         %% Start cue and initial delay
         taskHelper.stateTextOutput('Trial start', app);
-        flush(DAQ, "input");
-        flush(DAQ, "output");
         writeDigitalPin(ARDU, Info.PIN.LED, 1);
         writeDigitalPin(ARDU, Info.PIN.LEDDaq, 1);
         pause(session.startCueDur);
         writeDigitalPin(ARDU, Info.PIN.LED, 0);
         writeDigitalPin(ARDU, Info.PIN.LEDDaq, 0);
-        pause(session.initDelay);
+        pause(session.initDelay - 0.09); % there's a short delay as processing time
     
         %% Stimulus presentation
         taskHelper.stateTextOutput('Stim', app);
-        switch Init.tone{trial_i}
-            case 'H'
-                writeDigitalPin(ARDU, Info.PIN.soundDaq, 1);
-                play(speaker_high); % more accurate timing compared to playblocking
-                pause(0.3);
-                % playblocking(speaker_high);
-                writeDigitalPin(ARDU, Info.PIN.soundDaq, 0);
-            case 'L'
-                writeDigitalPin(ARDU, Info.PIN.soundDaq, 1);
-                play(speaker_low);
-                pause(0.3);
-                % playblocking(speaker_low);
-                writeDigitalPin(ARDU, Info.PIN.soundDaq, 0);
-            case 'M'
-                writeDigitalPin(ARDU, Info.PIN.soundDaq, 1);
-                play(speaker_mid);
-                pause(0.3);
-                % playblocking(speaker_mid);
-                writeDigitalPin(ARDU, Info.PIN.soundDaq, 0);
-        end
+        writeDigitalPin(ARDU, Info.PIN.soundDaq, 1);
+        play(speaker.(Init.tone{trial_i}));
+        pause(session.stimDur);
+        writeDigitalPin(ARDU, Info.PIN.soundDaq, 0);
         session.tone{trial_i} = Init.tone{trial_i};
     
         %% Port delay and approach
         taskHelper.stateTextOutput('Port delay', app);
-        pause(session.portDelay);
+        pause(session.portDelay - 0.08); % there's a short delay as processing time
         taskHelper.port_move(Info, approach, ARDU);
     
         %% Port response and response period
         taskHelper.stateTextOutput('Response', app);
         resp_period_start = tic; % record the start time of the lick
         % session.trialTypeDir gets updated from -1 1 0 to only 1 and -1
-        session = taskHelper.GNG_portResponse(Init, trial_i, session, ARDU, Info, withdraw, resp_period_start);
+        session = taskHelper.GNG_portResponse_rec_window(Init, trial_i, session, ARDU, Info, withdraw, resp_period_start);
 
         %% ITI and serial read
         taskHelper.stateTextOutput('ITI', app);
@@ -132,6 +137,9 @@ function [Info] = GNG_2tone_test(app, Info, Stim, ARDU, DAQ)
 
         flush(DAQ, "input");
         flush(DAQ, "output");
+        if session.correct(trial_i) == 0
+            pause(session.timeout);
+        end
         pause(Init.iti(trial_i));
     
         %% Accuracy and d' calculation
@@ -144,26 +152,22 @@ function [Info] = GNG_2tone_test(app, Info, Stim, ARDU, DAQ)
             session.totalTime = stoptime - Info.session.startTime;
             taskHelper.saveData(session, Info, Init);
             taskHelper.stateTextOutput('Data saved', app);
-            hold(app.accuPlot, 'off');
+            hold(app.bigPlot, 'off');
+            hold(app.smallPlot, 'off');
+            break;
+        end
+
+        if trial_i == min(Init.nTrials, session.prespecifiedTrialNum)
+            stoptime = datetime('now');
+            session.totalTime = stoptime - Info.session.startTime;
+            app.RunSwitch.Value = 'Stop';
+            taskHelper.saveData(session, Info, Init);
+            taskHelper.stateTextOutput('Data saved', app);
+            hold(app.bigPlot, 'off');
             hold(app.smallPlot, 'off');
             break;
         end
     
         %% TRIAL UPDATE
-    % if the accuracy for the past
-    if session.rule{trial_i} == session.initRule && session.initRule ~= 'C'
-        if trial_i >= session.switchThreshold && session.accuracy(trial_i) >= session.accuracyLevel && session.dprime(trial_i) >= session.dprimeLevel
-            session.switchTrial = trial_i;
-            app.repSwitch.Text = num2str(session.switchTrial);
-            Init.rule(trial_i+1:end) = deal({session.secondRule});
-            % Init.trialTypeDir(trial_i+1:end) = -Init.trialTypeDir(trial_i+1:end); % reverse the trial type for 2 tone only
-            hold(app.smallPlot, 'off');
-            taskHelper.GNG_drawTrialtype_init(Info, Init, app, trial_i+1);
-            hold(app.smallPlot, 'on'); % trial plot  
-            hold(app.accuPlot, 'on'); % delay plot
-            app.smallPlot.Title.String = [Info.session.date, '  ',Info.session.animalID,'  Switched at: ', num2str(session.switchTrial)];
-        end
-    end
-    trial_i = trial_i+1;
-    end
+        trial_i = trial_i + 1;
     end

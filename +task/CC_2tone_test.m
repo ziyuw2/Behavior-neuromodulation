@@ -32,7 +32,9 @@ function [Info] = CC_2tone_test(app, Info, Stim, ARDU, DAQ)
     session.airpuffDur = Info.taskparam.airpuffDur;
     session.waterTTLTime = Info.taskparam.waterTTLTime;
     session.airpuffProbability = Info.taskparam.airpuffProbability;
-    
+    session.recording = Info.session.recording;
+    session.expType = Info.session.expType;
+
     % Trial event storage
     session.event.led = [];
     session.event.lick_times = {};
@@ -61,6 +63,15 @@ function [Info] = CC_2tone_test(app, Info, Stim, ARDU, DAQ)
     %% Motor control
     nSteps = 5;
     [approach, withdraw] = taskHelper.getMotorSteps(Info, nSteps);
+
+    %% Pupil camera 
+    switch session.expType
+        case '1P imaging'
+        % cd('C:\Rig\Pupil_cam')
+        fclose(fopen('C:\Rig\Pupil_cam\start_cam.txt', 'w'));
+        disp("Signal sent to start camera.");
+        pause(5);
+    end
     
     %% Start the trial
     trial_i = 1;

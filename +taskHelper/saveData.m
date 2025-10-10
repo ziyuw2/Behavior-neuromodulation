@@ -15,7 +15,13 @@ function saveData(session, Info, Init)
     save(fullfile(Info.path.dataSession, strcat(Info.session.name, '.mat')), 'session');
     disp(['Saved data to: ', strcat(Info.session.name, '.mat')])
     saveByAnimal(session, Info);
-    saveLickFigure(session, Info);
+    pause(5);
+    if contains(Info.session.name, 'CC')
+        saveLickFigure(session, Info);
+    end
+    if contains(Info.session.name, 'GNG')
+        saveFigure_GNG(session, Info);
+    end
     disp('===============================================')
 end
 
@@ -108,76 +114,83 @@ end
 
 function saveLickFigure(session, Info)
     %% Lick plot
-    lickTimes = cellfun(@(x) x ./ 1000, session.event.lick_times, 'UniformOutput', false);
-    waterOnTimes = session.event.water/1000; % water onset
-    airpuffOnTimes = session.event.airpuff/1000; % airpuff onset
-    USonTimes = waterOnTimes;
-    USonTimes(isnan(waterOnTimes)) = airpuffOnTimes(isnan(waterOnTimes));
-    portOnTimes = session.event.port_on/1000; % port on onset
-    soundOnTimes = session.event.sound/1000; % sound onset
-    onsetTimes = soundOnTimes;
-    window = [-1, 5]; % Time window relative to sound onset (e.g., -1s before to +5s after)
-    windowSize = 0.1; % 100ms window
+  
+% Lick rate
+lickTimes = session.event.lick_times;
+winRange  = [0 10];    % analysis window [start end] in sec
+winSize   = 1.0;       % window size (s)
+stepSize  = 0.1;       % step size (s)
+% Define time bins (window centers)
+tCenters = winRange(1) : stepSize : (winRange(2) - winSize);
 
-    % stepSize = 1/FramRate; % 100-ms step size
-    edges = window(1):windowSize:window(2); % Time bins
-    timepoints = edges(1:end-1) + windowSize/2; % Bin centers
-    lickRateMatrix = NaN(length(USonTimes), length(edges)-1); % Preallocate lick rate matrix
-    anticipatoryLickRateAve = NaN(length(USonTimes), 1);
-    resultLickRateAve = NaN(length(USonTimes), 1);
-    for i = 1:length(USonTimes) % iterate over each trial
-        anticipatoryLickRateAve(i) = sum(lickTimes{i} >= portOnTimes(i) & lickTimes{i} < portOnTimes(i) + 0.5) / 0.5; % 0.5 second after port on
-        resultLickRateAve(i) = sum(lickTimes{i} >= USonTimes(i) & lickTimes{i} < USonTimes(i) + 0.5) / 0.5; % 0.5 second after US on
-        % Apply moving window
-        for j = 1:length(edges)-1
-            % Find licks within the 1-second window
-            binStartTime = onsetTimes(i) + edges(j);
-            binEndTime = binStartTime + windowSize;
-            lickRateMatrix(i, j) = sum(lickTimes{i} >= binStartTime & lickTimes{i} < binEndTime);
-        end
+% Preallocate matrix: trials x time
+nTrials = numel(lickTimes);
+lickRate = nan(nTrials, numel(tCenters));
+soundT = mean(session.event.sound)/1000;
+portT = mean(session.event.port_on)/1000;
+outcomeT = nanmean(session.event.water)/1000;
+
+% Compute lick rate per trial
+for tr = 1:nTrials
+    licks = lickTimes{tr}/1000;  % lick times in this trial
+
+    for i = 1:numel(tCenters)
+        t0 = tCenters(i);
+        t1 = t0 + winSize;
+
+        % Count licks within [t0, t1]
+        nLicks = sum(licks >= t0 & licks < t1);
+
+        % Convert to rate (Hz)
+        lickRate(tr,i) = nLicks / winSize;
     end
+end
 
-    isRewarded = contains(session.trialType, {'R', 'P'}); 
-    isNeutral = contains(session.trialType, 'N');
-    % comparing the lick rate 0.5s after the tone onset and the water delivery for rewarded and neutral trials
-    % [~, pRewarded] = ttest(mean(anticipatoryLickRateAve(isRewarded)), mean(resultLickRateAve(isRewarded)));
-    % [~, pNeutral] = ttest(mean(anticipatoryLickRateAve(isNeutral)), mean(resultLickRateAve(isNeutral)));
+% only anticipatory lick - calculated by each trials %%%%%%%%%%
+lickRate2 = nan(nTrials, 1);
+% Compute anticipatory lick rate 
+for tr = 1:nTrials
+    licks = lickTimes{tr};  % lick times in this trial
+    port_on = session.event.port_on(tr);
+    water_on = session.event.water(tr);
+    nLicks = sum(licks>port_on & licks<water_on);
+    lickRate2(tr) = nLicks/(water_on/1000-port_on/1000); 
+end
 
-    meanRewarded = mean(lickRateMatrix(isRewarded, :), 1) / windowSize; % Normalize by window size
-    stdRewarded = (std(lickRateMatrix(isRewarded, :), 1) / sqrt(sum(isRewarded)))/ windowSize;
-    meanNeutral = mean(lickRateMatrix(isNeutral, :), 1) / windowSize; % Normalize by window size
-    stdNeutral = (std(lickRateMatrix(isNeutral, :), 1) / sqrt(sum(isNeutral)))/ windowSize;
+clr = [0 0 1; 0 0 0];
+%% Plot
+RewT = strcmp(session.tone, 'H');
+OmiT = strcmp(session.tone, 'L');
+[h,p] = ttest2(lickRate2(RewT),lickRate2(OmiT));
+TrialType = [RewT',OmiT'];
+tCenters2 = tCenters+1;
+fHandle = figure('PaperUnits','Centimeters','PaperPosition',[2 2 4 3]);hold on
+anticipatory_lick = cell(2,1);
+for iT = 1:size(TrialType,2)
+    meanRate = mean(lickRate(TrialType(:,iT),:), 1, 'omitnan');
+    semRate  = std(lickRate(TrialType(:,iT),:), [], 1, 'omitnan') / sqrt(sum(TrialType(:,iT)));
 
-    [~, pAnticipatory] = ttest2(anticipatoryLickRateAve(isRewarded), anticipatoryLickRateAve(isNeutral));
-    
-    fHandle = figure('PaperUnits','Centimeters','PaperPosition',[2 2 8 6]);
-    % plot rewarded trials
-    fill([timepoints, flip(timepoints)],[meanRewarded+stdRewarded, flip(meanRewarded-stdRewarded)], '-b','EdgeColor','none');
-    alpha(0.4);
-    hold on;
-    plot(timepoints, meanRewarded, '-b', 'LineWidth',1);
-    % plot neutral trials
-    fill([timepoints, flip(timepoints)],[meanNeutral+stdNeutral, flip(meanNeutral-stdNeutral)], '-k','EdgeColor','none'); 
-    alpha(0.4);
-    hold on;
-    plot(timepoints, meanNeutral, '-k', 'LineWidth',1);
+    anticipatory_lick{iT} = mean(lickRate(TrialType(:,iT),tCenters2>portT&tCenters2<outcomeT),2);
+    % Shaded error bar (mean ± SEM)
+    fill([tCenters2 fliplr(tCenters2)], ...
+        [meanRate+semRate fliplr(meanRate-semRate)], ...
+        clr(iT,:),'EdgeColor','none');  % light blue shading
+    plot(tCenters2, meanRate, '-','color',clr(iT,:), 'LineWidth', 1);
+end
+alpha(0.3)
 
-    xline(mean(soundOnTimes), 'r--', 'LineWidth', 1, 'DisplayName', 'Sound onset'); % red vertical line at sound onset
-    xline(mean(portOnTimes), 'k--', 'LineWidth', 1, 'DisplayName', 'Port onset'); % black vertical line at port onset
-    xline(mean(USonTimes), 'b--', 'LineWidth', 1, 'DisplayName', 'US onset'); % blue vertical line at US onset
+plot([soundT soundT], [-2 18],'r--','linewidth',0.5);
+plot([portT portT], [-2 18],'k--','linewidth',0.5);
+plot([outcomeT outcomeT], [-2 18],'b--','linewidth',0.5);
+text(4.5,17,['\it{p} = ',mat2str(round(p,3),3)],'FontSize', 6)
 
-    % text(3, 11,['Rewarded, p = ',mat2str(pRewarded, 2)], 'color', 'blue','FontSize', 6)
-    % text(3, 10,['Neutral, p = ',mat2str(pNeutral, 2)], 'color', 'black','FontSize', 6)
-    text(4, 10, ['p = ', mat2str(pAnticipatory, 2)], 'color', 'black','FontSize', 6)
-    
-    set(gca,'TickDir','out','box','off','FontSize', 6,...
-        'xlim',[mean(onsetTimes)+window(1) mean(onsetTimes)+window(2)], ...
-        'xtick',[mean(onsetTimes)+window(1):1:mean(onsetTimes)+window(2)], ...
-        'ylim', [0 12], ...
-        'ytick', [0:4:12], ...
-        'xticklabel',[window(1):1:window(2)]);
-    xlabel('Time from cue (s)','FontSize', 8)
-    ylabel('Lick rate (Hz)','FontSize', 8)
+set(gca,'TickDir','out','box','off','FontSize', 6,...
+    'xlim',[0 6],'ylim',[0 18],'xtick',[soundT portT outcomeT outcomeT+1 outcomeT+2],'ytick',[0:5:15],...
+    'xticklabel',[0 1 2 3 4]);
+xlabel('Time form cue (s)');
+ylabel('Lick rate (Hz)');
+
+% saveas(fHandle, '2025-09-12-07-717-CC_2tone_test-H_GO-lickRate.png');
 
     if session.motorConnection
         title('Movable port')
@@ -190,3 +203,25 @@ function saveLickFigure(session, Info)
     % close(fHandle);
 end
 
+function saveFigure_GNG(session, Info)
+
+    accuracy = session.accuracy;
+    hitRate = session.hitRate;
+    faRate = session.faRate;
+
+    fHandle = figure('PaperUnits','Centimeters','PaperPosition',[2 2 8 6]);
+    hold on;
+    plot(accuracy, '-o', 'Color', '#00b000', 'LineWidth', 2, 'DisplayName', 'Accuracy');
+    hold on;
+    plot(hitRate, '-o', 'Color', '#0000ff', 'LineWidth', 2, 'DisplayName', 'Hit Rate');
+    plot(faRate, '-o', 'Color', '#ad0000', 'LineWidth', 2, 'DisplayName', 'FA Rate');
+    % legend('show');
+
+    set(gca,'TickDir','out','box','off','FontSize', 6,...
+    'ylim',[-0.2 1],'ytick', [-0.2:0.2:1]);
+    xlabel('Trials');
+    ylabel('Accuracy/Hit Rate/FA Rate');
+    saveas(fHandle, fullfile(Info.path.animalData, Info.session.animalID, strcat(Info.session.name, '-performance.png')));
+    disp('Saved figure to animal folder.');
+end
+    

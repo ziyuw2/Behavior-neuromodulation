@@ -86,5 +86,6 @@ function session = parseEventStruct(events, trial_i, session)
         session.event.lick_times{trial_i} = [];
     end
     
+
     end
     
