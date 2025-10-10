@@ -1,5 +1,5 @@
 ### +audiHelper
-Contains functions used to generate tones of different intensity
+Contains functions used to generate tones of different frequency
 
 ### +niHelper
 Contains functions used to extract TTL from NI DAQ analog recording
